@@ -1,0 +1,10 @@
+# Ignorer alle PDF-filer
+*.pdf
+
+# Ignorer billeder (gængse formater)
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.webp
+*.svg
