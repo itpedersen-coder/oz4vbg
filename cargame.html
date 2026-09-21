@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8" />
+<title>3D Racing - Primitive biler</title>
+<style>
+    body { margin: 0; overflow: hidden; background: #87CEEB; }
+    #info {
+        position: absolute; top: 20px; left: 20px;
+        color: white; font-family: Arial; font-size: 20px;
+        text-shadow: 0 0 5px black;
+    }
+</style>
+</head>
+<body>
+
+<div id="info">◀︎ ▶︎ for at styre — 3D biler, bakker, træer, motorlyd</div>
+
+<script type="module">
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.159.0/build/three.module.js';
+import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.159.0/examples/jsm/controls/OrbitControls.js';
+
+/* SCENE */
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x87CEEB);
+
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 5000);
+camera.position.set(0, 5, 12);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+document.body.appendChild(renderer.domElement);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enabled = false;
+
+/* LYS */
+const sun = new THREE.DirectionalLight(0xffffff, 1.2);
+sun.position.set(40, 150, -30);
+sun.castShadow = true;
+scene.add(sun);
+scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+
+/* TERRÆN */
+const terrainGeo = new THREE.PlaneGeometry(2000, 2000, 200, 200);
+terrainGeo.rotateX(-Math.PI / 2);
+for (let i = 0; i < terrainGeo.attributes.position.count; i++) {
+    const y = Math.sin(i * 0.11) * 3 + Math.sin(i * 0.004) * 12;
+    terrainGeo.attributes.position.setY(i, y);
+}
+terrainGeo.attributes.position.needsUpdate = true;
+
+const terrainMat = new THREE.MeshPhongMaterial({ color: 0x228B22 });
+const terrain = new THREE.Mesh(terrainGeo, terrainMat);
+terrain.receiveShadow = true;
+scene.add(terrain);
+
+/* VEJ */
+const roadWidth = 8;
+const roadLength = 5000;
+const roadGeo = new THREE.PlaneGeometry(roadWidth, roadLength, 1, 800);
+roadGeo.rotateX(-Math.PI / 2);
+
+function hill(z) { return Math.sin(z * 0.006) * 4 + Math.sin(z * 0.001) * 13; }
+function curveX(z) { return Math.sin(z * 0.0012) * 18; }
+
+const pos = roadGeo.attributes.position;
+for (let i = 0; i < pos.count; i++) {
+    const z = pos.getZ(i);
+    pos.setY(i, hill(z));
+    pos.setX(i, curveX(z));
+}
+pos.needsUpdate = true;
+
+const roadMat = new THREE.MeshPhongMaterial({ color: 0x333333 });
+const road = new THREE.Mesh(roadGeo, roadMat);
+road.receiveShadow = true;
+scene.add(road);
+
+/* TRÆER */
+function makeTree(x, z) {
+    const trunk = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.3, 0.5, 3),
+        new THREE.MeshPhongMaterial({ color: 0x8B4513 })
+    );
+    trunk.position.set(x, hill(z)+1.5, z);
+    trunk.castShadow = true;
+    scene.add(trunk);
+
+    const crown = new THREE.Mesh(
+        new THREE.SphereGeometry(2.2, 16, 16),
+        new THREE.MeshPhongMaterial({ color: 0x006400 })
+    );
+    crown.position.set(x, hill(z)+4.5, z);
+    crown.castShadow = true;
+    scene.add(crown);
+}
+
+for (let i = 0; i < 250; i++) {
+    const z = -i * 25;
+    makeTree(roadWidth + 10 + Math.random()*25, z);
+    makeTree(-roadWidth - 10 - Math.random()*25, z);
+}
+
+/* BILER (primitive) */
+const playerCar = new THREE.Mesh(
+    new THREE.BoxGeometry(2, 1, 4),
+    new THREE.MeshPhongMaterial({ color: 0xff0000 })
+);
+playerCar.position.set(0, hill(0)+0.6, 5);
+playerCar.castShadow = true;
+scene.add(playerCar);
+
+const enemyCars = [];
+function spawnEnemy() {
+    const car = new THREE.Mesh(
+        new THREE.BoxGeometry(2,1,4),
+        new THREE.MeshPhongMaterial({ color: 0x0000ff })
+    );
+    car.position.set((Math.random()*6)-3, hill(-200)+0.6, -200);
+    car.castShadow = true;
+    scene.add(car);
+    enemyCars.push(car);
+}
+setInterval(spawnEnemy, 1500);
+
+/* MOTORLYD */
+const listener = new THREE.AudioListener();
+camera.add(listener);
+const engineSound = new THREE.Audio(listener);
+const audioLoader = new THREE.AudioLoader();
+audioLoader.load(
+    "https://cdn.pixabay.com/download/audio/2022/03/15/audio_578b00cdc0.mp3",
+    function(buffer){
+        engineSound.setBuffer(buffer);
+        engineSound.setLoop(true);
+        engineSound.setVolume(0.5);
+        engineSound.play();
+    }
+);
+
+/* INPUT */
+let steer = 0;
+document.addEventListener("keydown", e => {
+    if(e.key === "ArrowLeft") steer = -0.25;
+    if(e.key === "ArrowRight") steer = 0.25;
+});
+document.addEventListener("keyup", e => { steer = 0; });
+
+/* ANIMATION */
+function animate() {
+    requestAnimationFrame(animate);
+
+    playerCar.position.z -= 1;
+    const z = -playerCar.position.z;
+    playerCar.position.y = hill(z) + 0.6;
+    const targetX = curveX(z) + steer * 20;
+    playerCar.position.x += (targetX - playerCar.position.x) * 0.1;
+
+    // Kamera bag bilen
+    const camOffset = new THREE.Vector3(0, 5, 12);
+    const desiredPosition = new THREE.Vector3().addVectors(playerCar.position, camOffset);
+    camera.position.lerp(desiredPosition, 0.1);
+    camera.lookAt(playerCar.position);
+
+    enemyCars.forEach((car,i)=>{
+        car.position.z += 1.4;
+        car.position.y = hill(-car.position.z)+0.6;
+        const dx = car.position.x - playerCar.position.x;
+        const dz = car.position.z - playerCar.position.z;
+
+        if(Math.abs(dx)<1.8 && Math.abs(dz)<2.5){
+            alert("💥 CRASH!");
+            location.reload();
+        }
+
+        if(car.position.z > camera.position.z+30){
+            scene.remove(car);
+            enemyCars.splice(i,1);
+        }
+    });
+
+    renderer.render(scene, camera);
+}
+
+animate();
+
+/* RESPONSIV */
+window.addEventListener("resize", ()=>{
+    camera.aspect = window.innerWidth/window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+
+</body>
+</html>
